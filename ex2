@@ -1,0 +1,92 @@
+// guess_number_fifo.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <time.h>
+
+#define FIFO_NAME "guess_fifo"
+
+void player2(int n) {
+    int fd;
+    char buffer[10];
+
+    while (1) {
+        int random_guess = rand() % n + 1;
+        printf("Попытка угадать: %d\n", random_guess);
+        
+        fd = open(FIFO_NAME, O_WRONLY);
+        sprintf(buffer, "%d", random_guess);
+        write(fd, buffer, strlen(buffer) + 1);
+        close(fd);
+
+        // Ожидание ответа от игрока 1
+        fd = open(FIFO_NAME, O_RDONLY);
+        read(fd, buffer, sizeof(buffer));
+        
+        if (strcmp(buffer, "correct") == 0) {
+            printf("Угадал!\n");
+            close(fd);
+            break; 
+        }
+        
+        close(fd);
+    }
+}
+
+void player1(int n) {
+    int fd;
+    char buffer[10];
+    
+    int number_to_guess = rand() % n + 1;
+    printf("Игрок 1 загадал число: %d\n", number_to_guess);
+
+    while (1) {
+        fd = open(FIFO_NAME, O_RDONLY);
+        read(fd, buffer, sizeof(buffer));
+        
+        int guess = atoi(buffer);
+        printf("Игрок 2 предположил: %d\n", guess);
+
+        if (guess == number_to_guess) {
+            strcpy(buffer, "correct");
+            fd = open(FIFO_NAME, O_WRONLY);
+            write(fd, buffer, strlen(buffer) + 1);
+            close(fd);
+            break; 
+        } else {
+            strcpy(buffer, "wrong");
+            fd = open(FIFO_NAME, O_WRONLY);
+            write(fd, buffer, strlen(buffer) + 1);
+            close(fd);
+        }
+        
+        close(fd);
+    }
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Использование: %s <N>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    int n = atoi(argv[1]);
+    
+    mkfifo(FIFO_NAME, 0666); // Создание именованного канала
+    srand(time(NULL));
+
+    pid_t pid = fork();
+    
+    if (pid == 0) { // Процесс игрока 2
+        player2(n);
+    } else { // Процесс игрока 1
+        player1(n);
+        wait(NULL); // Ожидание завершения процесса игрока 2
+    }
+
+    unlink(FIFO_NAME); // Удаление именованного канала
+    return EXIT_SUCCESS;
+}
