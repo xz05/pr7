@@ -1,0 +1,73 @@
+// guess_number_signal.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <time.h>
+
+volatile sig_atomic_t guessed = 0;
+volatile sig_atomic_t guess = 0;
+
+void handler_guess(int sig) {
+    guessed = 1;
+}
+
+void handler_correct(int sig) {
+    printf("Угадано! Число: %d\n", guess);
+}
+
+void player2(int n) {
+    srand(time(NULL));
+    while (1) {
+        if (guessed) {
+            int random_guess = rand() % n + 1;
+            printf("Попытка угадать: %d\n", random_guess);
+            guess = random_guess;
+
+            // Отправляем сигнал игроку 1
+            kill(getppid(), SIGUSR1);
+            guessed = 0;
+
+            pause(); // Ожидание сигнала от игрока 1
+        }
+    }
+}
+
+void player1(int n) {
+    int number_to_guess = rand() % n + 1;
+    printf("Игрок 1 загадал число: %d\n", number_to_guess);
+
+    while (1) {
+        pause(); // Ожидание сигнала от игрока 2
+        if (guess == number_to_guess) {
+            kill(getpid(), SIGUSR2); // Угадали
+            break;
+        } else {
+            printf("Неправильно! Попробуй снова.\n");
+        }
+    }
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Использование: %s <N>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    int n = atoi(argv[1]);
+    srand(time(NULL));
+
+    signal(SIGUSR1, handler_guess);
+    signal(SIGUSR2, handler_correct);
+
+    pid_t pid = fork();
+    
+    if (pid == 0) { // Процесс игрока 2
+        player2(n);
+    } else { // Процесс игрока 1
+        player1(n);
+        wait(NULL); // Ожидание завершения процесса игрока 2
+    }
+
+    return EXIT_SUCCESS;
+}
